@@ -166,7 +166,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
     g_nid.uID = 1;
     g_nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     g_nid.uCallbackMessage = WM_TRAYICON;
-    g_nid.hIcon = LoadCursor(NULL, IDC_ARROW); // standard Windows mouse cursor icon
+    g_nid.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_SMALL)); // Uses small.ico for a crisp 16x16 tray icon!
+
+    //g_nid.hIcon = LoadCursor(NULL, IDC_ARROW); // standard Windows mouse cursor icon
     strcpy_s(g_nid.szTip, "CursorLock: ENABLED (Press F9 to pause)");
     Shell_NotifyIconA(NIM_ADD, &g_nid);
 
