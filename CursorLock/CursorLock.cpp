@@ -67,7 +67,6 @@ void OpenExclude()
     ShellExecuteA(NULL, "open", txtPath.c_str(), NULL, NULL, SW_SHOWNORMAL);
 }
 
-
 std::string GetProcName(HWND hwnd)
 {
     DWORD pid = 0;
@@ -129,7 +128,6 @@ bool IsFullscreen(RECT& outMonitorRect)
 
     return false;
 }
-
 
 void UpdateText(HWND hwnd)
 {
