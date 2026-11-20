@@ -3,40 +3,95 @@
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "shell32.lib")
 
-// Checks if the active foreground window is in true Fullscreen (ignores normal maximized windows)
+void LoadCustomExclusions()
+{
+    g_excludedProcesses = EXCLUDED_PROCESSES;
+
+    char exePath[MAX_PATH] = { 0 };
+    if (!GetModuleFileNameA(NULL, exePath, MAX_PATH))
+        return;
+
+    std::string dirPath(exePath);
+    size_t lastSlash = dirPath.find_last_of("\\/");
+    if (lastSlash == std::string::npos)
+        return;
+
+    std::string txtPath = dirPath.substr(0, lastSlash + 1) + EXCLUDE_FILE_NAME;
+
+    std::ifstream file(txtPath);
+    if (!file.is_open())
+        return;
+
+    std::string line;
+    while (std::getline(file, line))
+    {
+        size_t start = line.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) continue;
+        size_t end = line.find_last_not_of(" \t\r\n");
+        std::string trimmed = line.substr(start, end - start + 1);
+
+        if (trimmed.empty() || trimmed[0] == '#' || (trimmed.size() >= 2 && trimmed[0] == '/' && trimmed[1] == '/'))
+            continue;
+
+        g_excludedProcesses.push_back(trimmed);
+    }
+}
+
+
+std::string GetWindowProcessName(HWND hwnd)
+{
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (!pid) return "";
+
+    HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!hProc) return "";
+
+    char fullPath[MAX_PATH] = { 0 };
+    DWORD size = MAX_PATH;
+    std::string exeName = "";
+    if (QueryFullProcessImageNameA(hProc, 0, fullPath, &size))
+    {
+        std::string pathStr(fullPath);
+        size_t pos = pathStr.find_last_of("\\/");
+        exeName = (pos != std::string::npos) ? pathStr.substr(pos + 1) : pathStr;
+    }
+    CloseHandle(hProc);
+    return exeName;
+}
+
 bool IsForegroundWindowFullscreen(RECT& outMonitorRect)
 {
     HWND fgHwnd = GetForegroundWindow();
     if (!fgHwnd || !IsWindowVisible(fgHwnd) || IsIconic(fgHwnd))
         return false;
 
-    // Ignore the Windows desktop wallpaper and taskbar
     char className[256] = {0};
     GetClassNameA(fgHwnd, className, sizeof(className));
     std::string cls(className);
     if (cls == "WorkerW" || cls == "Progman" || cls == "Shell_TrayWnd" || cls == "Shell_SecondaryTrayWnd")
         return false;
 
-    // Check window styles: normal maximized apps have a title bar (WS_CAPTION) or resize border (WS_THICKFRAME).
-    // True fullscreen games (Exclusive or Borderless) strip these styles away.
+    std::string procName = GetWindowProcessName(fgHwnd);
+    for (const auto& excluded : g_excludedProcesses)    
+        if (_stricmp(procName.c_str(), excluded.c_str()) == 0)
+            return false;    
+
     LONG_PTR style = GetWindowLongPtrA(fgHwnd, GWL_STYLE);
     if ((style & WS_CAPTION) == WS_CAPTION || (style & WS_THICKFRAME) != 0)
         return false;
 
-    // Get the exact monitor the active window is running on
     HMONITOR hMon = MonitorFromWindow(fgHwnd, MONITOR_DEFAULTTONEAREST);
     MONITORINFO mi{};
     mi.cbSize = sizeof(mi);
     if (!GetMonitorInfoA(hMon, &mi))
         return false;
 
-    // Get the active window's screen coordinates
     RECT win{};
     if (!GetWindowRect(fgHwnd, &win))
         return false;
 
-    // Verify the window covers the entire monitor (including over the taskbar area)
-    if ((win.left <= mi.rcMonitor.left && win.top <= mi.rcMonitor.top && win.right >= mi.rcMonitor.right && win.bottom >= mi.rcMonitor.bottom))
+    if (win.left <= mi.rcMonitor.left && win.top <= mi.rcMonitor.top && win.right >= mi.rcMonitor.right && win.bottom >= mi.rcMonitor.bottom)
     {
         outMonitorRect = mi.rcMonitor;
         return true;
@@ -44,6 +99,7 @@ bool IsForegroundWindowFullscreen(RECT& outMonitorRect)
 
     return false;
 }
+
 
 void UpdateTrayTooltip(HWND hwnd)
 {
@@ -70,12 +126,11 @@ void ShowTrayMenu(HWND hwnd)
     GetCursorPos(&pt);
 
     HMENU hMenu = CreatePopupMenu();
-    AppendMenuA(hMenu, MF_STRING | (g_lockEnabled ? MF_CHECKED : MF_UNCHECKED),
-        ID_TRAY_TOGGLE, "Enable Fullscreen Cursor Lock (F9)");
+    AppendMenuA(hMenu, MF_STRING | (g_lockEnabled ? MF_CHECKED : MF_UNCHECKED), ID_TRAY_TOGGLE, "Enable Fullscreen Cursor Lock (F9)");
+    AppendMenuA(hMenu, MF_STRING, ID_TRAY_RELOAD, "Reload exclude.txt");
     AppendMenuA(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenuA(hMenu, MF_STRING, ID_TRAY_EXIT, "Exit");
 
-    // Required by Windows so the menu closes properly when clicking outside it
     SetForegroundWindow(hwnd);
     TrackPopupMenu(hMenu, TPM_BOTTOMALIGN | TPM_LEFTALIGN, pt.x, pt.y, 0, hwnd, NULL);
     DestroyMenu(hMenu);
@@ -122,6 +177,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     case WM_COMMAND:
         if (LOWORD(wParam) == ID_TRAY_TOGGLE)        
             ToggleLockState(hwnd);        
+        else if (LOWORD(wParam) == ID_TRAY_RELOAD)        
+            LoadCustomExclusions();        
         else if (LOWORD(wParam) == ID_TRAY_EXIT)        
             DestroyWindow(hwnd);        
         break;
@@ -157,18 +214,14 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
     wc.lpszClassName = WINDOW_CLASS_NAME;
     RegisterClassA(&wc);
 
-    // Create a hidden message-only window (no taskbar button or visible window)
     HWND hwnd = CreateWindowExA(0, WINDOW_CLASS_NAME, APP_TITLE, 0, 0, 0, 0, 0, NULL, NULL, hInstance, NULL);
 
-    // Add icon to the Windows system tray
     g_nid.cbSize = sizeof(g_nid);
     g_nid.hWnd = hwnd;
     g_nid.uID = 1;
     g_nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     g_nid.uCallbackMessage = WM_TRAYICON;
-    g_nid.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_SMALL)); // Uses small.ico for a crisp 16x16 tray icon!
-
-    //g_nid.hIcon = LoadCursor(NULL, IDC_ARROW); // standard Windows mouse cursor icon
+    g_nid.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_SMALL));
     strcpy_s(g_nid.szTip, "CursorLock: ENABLED (Press F9 to pause)");
     Shell_NotifyIconA(NIM_ADD, &g_nid);
 
