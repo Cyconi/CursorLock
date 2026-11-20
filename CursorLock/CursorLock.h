@@ -7,23 +7,25 @@
 #include <vector>
 #include <fstream>
 #include <algorithm>
+#include <shlobj.h>
 #include "resource.h"
 
-constexpr UINT WM_TRAYICON = WM_USER + 1;
-constexpr UINT ID_TRAY_TOGGLE = 1001;
-constexpr UINT ID_TRAY_RELOAD = 1002;
-constexpr UINT ID_TRAY_EXIT = 1003;
-constexpr UINT ID_TIMER_CHECK = 2001;
+constexpr UINT WM_ICON = WM_USER + 1;
+constexpr UINT ID_TOGGLE = 1001;
+constexpr UINT ID_RELOAD = 1002;
+constexpr UINT ID_OPEN_CFG = 1003;
+constexpr UINT ID_EXIT = 1004;
+constexpr UINT ID_TIMER = 2001;
 constexpr UINT ID_HOTKEY_F9 = 3001;
 
 constexpr UINT POLL_INTERVAL_MS = 15;
-constexpr UINT HOTKEY_KEY = VK_F9;
-constexpr const char* MUTEX_NAME = "Global\\CursorLockSingleInstanceMutex";
-constexpr const char* WINDOW_CLASS_NAME = "CursorLockHiddenWindow";
-constexpr const char* APP_TITLE = "CursorLock";
-constexpr const char* EXCLUDE_FILE_NAME = "exclude.txt";
+constexpr UINT HOTKEY = VK_F9;
+constexpr const char* MUTEX = "Global\\CursorLockSingleInstanceMutex";
+constexpr const char* WIN_CLASS = "CursorLockHiddenWindow";
+constexpr const char* APP = "CursorLock";
+constexpr const char* EXCLUDE_FILE = "exclude.txt";
 
-inline const std::vector<std::string> EXCLUDED_PROCESSES = 
+inline const std::vector<std::string> EXCLUDED_PROC = 
 {
     "ScreenClippingHost.exe",
     "SnippingTool.exe",
@@ -34,14 +36,16 @@ inline const std::vector<std::string> EXCLUDED_PROCESSES =
 };
 
 inline NOTIFYICONDATAA g_nid{};
-inline bool g_lockEnabled = true;
+inline bool g_isLocked = true;
 inline bool g_isClipped = false;
-inline std::vector<std::string> g_excludedProcesses = EXCLUDED_PROCESSES;
+inline std::vector<std::string> g_excludedProc = EXCLUDED_PROC;
 
-void LoadCustomExclusions();
-std::string GetWindowProcessName(HWND hwnd);
-bool IsForegroundWindowFullscreen(RECT& outMonitorRect);
-void UpdateTrayTooltip(HWND hwnd);
+void LoadExclusions();
+std::string GetExcludePath();
+void OpenExclude();
+std::string GetProcName(HWND hwnd);
+bool IsFullscreen(RECT& outMonitorRect);
+void UpdateText(HWND hwnd);
 void ToggleLockState(HWND hwnd);
-void ShowTrayMenu(HWND hwnd);
+void ShowMenu(HWND hwnd);
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);

@@ -128,9 +128,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="CursorLock.h" />
-    <ClInclude Include="framework.h" />
     <ClInclude Include="Resource.h" />
-    <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="CursorLock.cpp" />
